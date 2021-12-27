@@ -9,6 +9,7 @@ class Program
     static Stopwatch sw = new Stopwatch();
     static int sizeX = 950;
     static int sizeY = 600;
+    static uint bufferSize = 0;
     /// <summary>
     /// Obligatory name for your first OpenGL example program.
     /// </summary>
@@ -39,14 +40,16 @@ class Program
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         sw.Start();
         grid.CalculateThreshold(sizeX, sizeY);
+        CreateVertices(grid.GetVerticesMarchingSquares(sizeX, sizeY), out var vao, out var vbo, out bufferSize);
         while (!Glfw.WindowShouldClose(window))
         {
-
+            
+            Glfw.PollEvents();
             if (sw.ElapsedMilliseconds < 30) continue;
             Glfw.GetWindowSize(window, out int width, out int height);
+            if (width == 0 || height == 0) continue;
             if (width != sizeX || height != sizeY)
             {
-                
                 var screen = Glfw.PrimaryMonitor.WorkArea;
                 var x = (screen.Width - width) / 2;
                 var y = (screen.Height - height) / 2;
@@ -56,18 +59,17 @@ class Program
                 sizeY = height;
                 sizeX = width;
             }
+            
             grid.UpdateSources(sw.ElapsedMilliseconds / 40.0f, sizeX, sizeY);
             sw.Restart();
             // Swap fore/back framebuffers, and poll for operating system events.
             Glfw.SwapBuffers(window);
-            Glfw.PollEvents();
-
             // Clear the framebuffer to defined background color
             glClear(GL_COLOR_BUFFER_BIT);
 
             //SetRandomColor(location);
 
-            CreateVertices(grid.GetVerticesMarchingSquares(sizeX,sizeY), out var vao, out var vbo);
+            UpdateBuffer(grid.GetVerticesMarchingSquares(sizeX,sizeY), ref vao, ref vbo);
 
             glDrawArrays(GL_LINES, 0, grid.count);
         }
@@ -199,7 +201,7 @@ class Program
     /// </summary>
     /// <param name="vao">The created vertex array object for the triangle.</param>
     /// <param name="vbo">The created vertex buffer object for the triangle.</param>
-    private static unsafe void CreateVertices(List<float[]> vert, out uint vao, out uint vbo)
+    private static unsafe void CreateVertices(List<float[]> vert, out uint vao, out uint vbo, out uint bufferSize)
     {
 
         ListToVertArray(vert, out float[] vertices);
@@ -213,9 +215,27 @@ class Program
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         fixed (float* v = &vertices[0])
         {
-            glBufferData(GL_ARRAY_BUFFER, sizeof(float) * vertices.Length, v, GL_STATIC_DRAW);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(float) * vertices.Length, v, GL_DYNAMIC_DRAW);
         }
 
+        glVertexAttribPointer(0, 2, GL_FLOAT, true, 2 * sizeof(float), NULL);
+        glEnableVertexAttribArray(0);
+        bufferSize = (uint)(sizeof(float) * vertices.Length);
+    }
+    private static unsafe void UpdateBuffer(List<float[]> vert, ref uint vao, ref uint vbo)
+    {
+        ListToVertArray(vert, out float[] vertices);
+        if (vertices.Length*sizeof(float) > bufferSize)
+        {
+            CreateVertices(vert, out vao, out vbo, out bufferSize);
+            return;
+        }
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glClearBufferfi(GL_ARRAY_BUFFER, 0, bufferSize, 0);
+        fixed (float* v = &vertices[0])
+        {
+            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(float) * vertices.Length, v);
+        }
         glVertexAttribPointer(0, 2, GL_FLOAT, true, 2 * sizeof(float), NULL);
         glEnableVertexAttribArray(0);
     }
